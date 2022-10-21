@@ -1,0 +1,9 @@
+# This file contains the user-specific settings for the scc_access script.
+#
+# You should rename the file settings_sample.yaml (e.g. to settings.yaml) and move it outside the module repository. Take care to set the
+# minimum required permissions, as this file contains SCC access codes. For website login, it is recommended to
+# use credential for a user without station-management privileges.
+basic_credentials: ['sccuser', 'sccpassword']     # The HTTP user name and password that is needed to access the SCC site.
+website_credentials: ['username', 'password']   # The user-name and password that is needed to log in to the SCC site.
+output_dir: /path/to/output_dir          # The directory to download the files
+base_url: https://scc.imaa.cnr.it/              # SCC base URL. Normally you shouldn't need to change that.

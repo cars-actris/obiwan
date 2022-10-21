@@ -1,0 +1,67 @@
+# Sets the path for the sample files used to determine the SCC System ID when uploading data to the Single Calculus Chain:
+scc_configurations_folder: data/Samples
+
+# Path to the lidar system extra parameters, needed for creating the NetCDF files required by Single Calculus Chain.
+# Please check the atmospheric-lidar package documentation for more information.
+system_netcdf_parameters: conf/system/rali_netcdf_parameters 2020.py
+
+# This parameter will be used to identify real measurements. The algorithm will look for this string in the location field
+# in the raw Licel files. In this sample, the instrument will use "Buchares" location:
+measurement_location: Buchares
+
+# This parameter will be used to identify dark files. The algorithm will look for this string in the location field
+# in the raw Licel files. In this sample, dark measurements will use "Dark" location:
+dark_location: Dark
+
+# This folder will hold the converted NetCDF files, which can be uploaded to the Single Calculus Chain:
+netcdf_out_folder: data/netcdf
+
+# The directory where to download SCC products:
+scc_output_dir: scc_output
+
+# The HTTP username and password that is needed to access the SCC site:
+scc_basic_credentials: ['sccuser', 'sccpassword']
+
+# The username and password that is needed to log in to the SCC site:
+scc_website_credentials: ['username', 'password']
+
+# SCC base URL. Normally you shouldn't need to change this:
+scc_base_url: https://scc.imaa.cnr.it/
+
+# Number of retries in case of connection issues when trying to upload measurements to the Single Calculus Chain:
+scc_maximum_upload_retries: 3
+
+# Maximum accepted time gap (in seconds) between two raw data files. Two data files with a time gap below this value will be
+# considered as being part of the same measuremnt. A time gap above this value will signal a pause between two different measurements:
+maximum_measurement_gap: 600
+
+# Minimum time length (in seconds) for a measurement to be taken into account for further processing. This option is useful for
+# filtering incomplete measurements when the instrument was turned off.
+minimum_measurement_length: 1800
+
+# Maximum time length (in seconds) for a measurement. Continuous measurements will be split at this length. This option is useful for
+# setting the maximum length of a measurement to be uploaded to the Single Calculus Chain (usually 1 hour, or 3600 seconds).
+
+maximum_measurement_length: 3600
+
+# Determines how the algorithm will split the measurements when building the NetCDF files. Three values are accepted:
+# * -1 will split them based only on measurement length (see above)
+# * 0 will try to center the measurements at fixed (xx:00) hours. First and last measurements from a set are being excepted from this rule (depending on when the measurement started/stopped).
+# * 1 will try to center the measurements at half hours (xx:30). First and last measurements from a set are being excepted from this rule (depending on when the measurement started/stopped).
+measurement_center_type: -1
+
+# You can define test files lists using the test_TESTTNAME convention. Each item in the list
+# corresponds to the location parameter written in the raw file header when the test is run.
+# This will identify raw test files based on location information and copies them to the "tests" folder.
+# Tests are considered valid and will be copied only if the entire list of
+# tests is present.
+test_Telecover:
+    - 'Telecove'
+    
+test_Depolarisation:
+    - '+45'
+    - '-45'
+
+# When using the --debug command line parameter, raw files will be copied to the specified folder
+# in order to verify how the measurements were split before being converted to SCC NetCDF files:
+measurements_debug_dir: data/measurement_debug
