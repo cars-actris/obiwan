@@ -31,7 +31,7 @@ def find_version(*file_paths):
 
 # Run setup
 setup(name='obiwan',
-      packages=['obiwan'],
+      packages=['obiwan', 'obiwan.lidarchive'],
       version=find_version("obiwan", "__init__.py"),
       description='Package for automated lidar data processing using the Single Calculus Chain',
       long_description=long_description,
