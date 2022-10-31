@@ -1,4 +1,5 @@
 from obiwan.log import logger
+from pathlib import Path
 
 import os
 import yaml
@@ -85,7 +86,9 @@ class Config:
             
         # Otherwise, if a relative path was provided,
         # get path relative to the parent folder of this file:
-        relpath = os.path.join ( os.path.dirname ( os.path.realpath ( __file__ ) ), '..', '..', path )
+        
+        # relpath = os.path.join ( os.path.dirname ( os.path.realpath ( __file__ ) ), '..', '..', path )
+        relpath = os.path.join ( Path.home(), path )
         abspath = os.path.abspath ( os.path.normpath ( relpath ) )
         
         return abspath
