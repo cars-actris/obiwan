@@ -1,6 +1,7 @@
 import logging
 import pickle
 import os
+import datetime
 
 '''
 Module intended exports
@@ -20,25 +21,6 @@ def UseSwapFile ( file_path ):
 def UseCsvDatalog ( file_path ):
     global datalog
     datalog.set_csv_path ( file_path )
-    
-def WriteProcessingLog ( file_path ):
-    if not os.path.isfile ( os.path.abspath ( file_path) ):
-        with open ( os.path.abspath ( file_path ), 'w' ) as csvfile:
-            csvfile.write ( "Process Start,Data Folder,Data File,SCC System ID,Measurement ID,Uploaded,Downloaded,SCC Version,Result" )
-            
-    with open ( os.path.abspath ( file_path ), 'a' ) as csvfile:
-        for measurement_id in processing_log.keys():
-            csvfile.write ("\n%s,%s,%s,%s,%s,%s,%s,\"%s\",%s" % (
-                processing_log[ measurement_id ][ "process_start" ],
-                processing_log[ measurement_id ][ "data_folder" ],
-                processing_log[ measurement_id ][ "data_file" ],
-                processing_log[ measurement_id ][ "scc_system_id" ],
-                measurement_id,
-                processing_log[ measurement_id ][ "uploaded" ],
-                processing_log[ measurement_id ][ "downloaded" ],
-                processing_log[ measurement_id ][ "scc_version" ],
-                processing_log[ measurement_id ][ "result" ]
-            ))
             
 def SetLogLevel ( level ):
     global logger, console
@@ -59,7 +41,7 @@ def SetLogLevel ( level ):
         
     logger.debug("Debug enabled")
 
-class SwapFile:
+class Datalog:
     def __init__ ( self, file_path = None ):
         self.measurements = {}
         self.config = {}
@@ -96,6 +78,35 @@ class SwapFile:
         
     def reset_measurements ( self ):
         self.measurements = {}
+        
+    def initialize_measurement ( self, measurement ):
+        self.update_measurement ( measurement.Id(), ("measurement", measurement), save=False )
+        self.update_measurement ( measurement.Id(), ("scc_netcdf_path", ""), save=False )
+        self.update_measurement ( measurement.Id(), ("converted", False), save=False )
+        self.update_measurement ( measurement.Id(), ("uploaded", False) )
+        self.update_measurement ( measurement.Id(), ("downloaded", False), save=False )
+        self.update_measurement ( measurement.Id(), ("system_id", None), save=False )
+        self.update_measurement ( measurement.Id(), ("scc_measurement_id", None), save=False )
+        self.update_measurement ( measurement.Id(), ("already_on_scc", False), save=False )
+        self.update_measurement ( measurement.Id(), ("result", ""), save=False )
+        self.update_measurement ( measurement.Id(), ("scc_version", ""), save=False )
+        self.update_measurement ( measurement.Id(), ("process_start", datetime.datetime.now()), save=False )
+        self.update_measurement ( measurement.Id(), ("folder", self.config.get("folder", False)), save = False )
+        
+        upload_enabled = not self.config.get("convert", False)
+        download_enabled = not self.config.get("convert", False) and self.config.get("download", True)
+        debug_enabled = self.config.get("debug", False)
+        reprocess_enabled = self.config.get("reprocess", False)
+        replace_enabled = self.config.get("replace", False)
+        wait_enabled = self.config.get("wait", False)
+        
+        self.update_measurement ( measurement.Id(), ("want_convert", True), save = False )
+        self.update_measurement ( measurement.Id(), ("want_upload", upload_enabled), save = False )
+        self.update_measurement ( measurement.Id(), ("want_download", download_enabled), save = False )
+        self.update_measurement ( measurement.Id(), ("want_debug", debug_enabled), save = False )
+        self.update_measurement ( measurement.Id(), ("reprocess_enabled", reprocess_enabled), save = False )
+        self.update_measurement ( measurement.Id(), ("replace_enabled", replace_enabled), save = False )
+        self.update_measurement ( measurement.Id(), ("wait_enabled", wait_enabled), save = False )
 
     def update_config ( self, kvp, save = True ):
         self.config[ kvp[0] ] = kvp[1]
@@ -130,22 +141,8 @@ class SwapFile:
             if self.measurements[ key ][ "scc_measurement_id" ] == scc_id:
                 return self.measurements[ key ]
                 
-    @staticmethod
-    def compute_path ( path ):
-        if ( os.path.isabs ( path ) ):
-            # If the user configured an absolute path
-            # use that without any questions asked:
-            return path
-            
-        # Otherwise, if a relative path was provided,
-        # get path relative to the parent folder of this file:
-        relpath = os.path.join ( os.path.dirname ( os.path.realpath ( __file__ ) ), '..', '..', path )
-        abspath = os.path.abspath ( os.path.normpath ( relpath ) )
-        
-        return abspath
-                
     def set_csv_path ( self, file_path ):
-        self.csv_path = SwapFile.compute_path ( file_path )
+        self.csv_path = os.path.abspath ( file_path )
                 
     def write_csv ( self ):
         if self.csv_path is None:
@@ -155,25 +152,37 @@ class SwapFile:
             
         if not os.path.isfile ( self.csv_path ):
             with open ( self.csv_path, 'w' ) as csvfile:
-                csvfile.write ( "Process Start,Data Folder,Data File,SCC System ID,Measurement ID,Uploaded,Downloaded,SCC Version,Result" )
+                csvfile.write ( "Process Start,Obiwan ID,Data Folder,NC Folder,NC File,SCC System ID,Measurement ID,Uploaded,Downloaded,SCC Version,Result" )
                 
         with open (self.csv_path, 'a') as csvfile:
-            for measurement in self.measurements.values():
+            for id, measurement in self.measurements.items():
                 process_start = measurement.get("process_start", "N/A")
                 
                 try:
-                    path = measurement["scc_netcdf_path"]
-                    data_folder = os.path.dirname ( path )
-                    data_file = os.path.basename ( path )
-                except Exception as e:
-                    logger.error ( str(e) )
-                    data_folder = "N/A"
-                    data_file = "N/A"
+                    # Path must be valid!
+                    assert (len(measurement["scc_netcdf_path"]) > 0)
                     
-                csvfile.write ("\n%s,%s,%s,%s,%s,%s,%s,\"%s\",%s" % (
+                    path = measurement["scc_netcdf_path"]
+                    netcdf_folder = os.path.dirname ( path )
+                    netcdf_file = os.path.basename ( path )
+                except:
+                    netcdf_folder = "N/A"
+                    netcdf_file = "N/A"
+                    
+                try:
+                    # Path must be valid!
+                    assert (len(measurement["folder"]) > 0)
+                    
+                    data_folder = os.path.abspath ( measurement["folder"] )
+                except:
+                    data_folder = "N/A"
+                    
+                csvfile.write ("\n%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\",%s" % (
                     measurement.get("process_start", "N/A"),
+                    id,
                     data_folder,
-                    data_file,
+                    netcdf_folder,
+                    netcdf_file,
                     measurement.get("system_id", "N/A"),
                     measurement.get("scc_measurement_id", "N/A"),
                     measurement.get("uploaded", "N/A"),
@@ -234,5 +243,5 @@ class LoggerFactory:
         
         return logger, console
 
-datalog = SwapFile ()
+datalog = Datalog ()
 logger, console = LoggerFactory.getLogger()

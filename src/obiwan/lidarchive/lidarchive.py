@@ -1,16 +1,24 @@
 import fileinput
 
 from atmospheric_lidar import licel
-from atmospheric_lidar.licel import LicelLidarMeasurement
+from atmospheric_lidar.licel import LicelFile
+from atmospheric_lidar.licelv2 import LicelFileV2
 from datetime import datetime, timedelta
 import glob
 import os
 import shutil
 
+from enum import Enum
+
 licel_file_header_format = ['Filename',
                             'StartDate StartTime EndDate EndTime Altitude Longtitude Latitude ZenithAngle',
                             # Appart from Site that is read manually
                             'LS1 Rate1 LS2 Rate2 DataSets', ]
+                            
+class MeasurementType(Enum):
+    UNKNOWN = 1
+    LICEL_V1 = 2
+    LICEL_V2 = 3
 
 class Lidarchive:
     '''
@@ -25,14 +33,14 @@ class Lidarchive:
         Helper class used to describe a lidar system channel.
         '''
 
-        def __init__(self, licel_channel):
-            self.name = licel_channel.name
-            self.resolution = licel_channel.resolution
-            self.wavelength = licel_channel.wavelength
-            self.laser_used = licel_channel.laser_used
-            self.adcbits = licel_channel.adcbits
-            self.analog = licel_channel.is_analog
-            self.active = licel_channel.active
+        def __init__(self, **kwargs):
+            self.name = kwargs.get("name")
+            self.resolution = kwargs.get("resolution")
+            self.wavelength = kwargs.get("wavelength")
+            self.laser_used = kwargs.get("laser_used")
+            self.adcbits = kwargs.get("adcbits")
+            self.analog = kwargs.get("analog")
+            self.active = kwargs.get("active")
 
         def Equals(self, channel):
             '''
@@ -54,19 +62,97 @@ class Lidarchive:
             return False
 
     class MeasurementFile:
-        def __init__(self, path, start_datetime, end_datetime, site, type):
+        @staticmethod
+        def LicelV1Parser ( path ):
+            info = {}
+            extra_info = {}
+            channels = []
+            
+            licel_file = LicelFile(path, import_now = False)
+            
+            info["start_time"] = licel_file.start_time.replace(tzinfo=None)
+            info["end_time"] = licel_file.stop_time.replace(tzinfo=None)
+            info["site"] = licel_file.site
+            
+            for channel_name, channel in enumerate(licel_file.channel_info):
+                channels.append(
+                    Lidarchive.MeasurementChannel(
+                        name = channel_name,
+                        resolution = channel["bin_width"],
+                        wavelength = int ( channel["wavelength"].split('.')[0] ),
+                        laser_used = channel["laser_used"],
+                        adcbits = channel["ADCbits"],
+                        analog = channel["analog_photon"] == 0,
+                        active = channel["active"]
+                    )
+                )
+                
+            info["extra"] = {}
+            
+            return info, channels
+            
+        @staticmethod
+        def LicelV2Parser ( path ):
+            info = {}
+            extra_info = {}
+            channels = []
+            
+            licel_file = LicelFileV2(path, import_now = False)
+            
+            info["start_time"] = licel_file.start_time.replace(tzinfo=None)
+            info["end_time"] = licel_file.stop_time.replace(tzinfo=None)
+            info["site"] = licel_file.site
+            
+            for channel_name, channel in enumerate(licel_file.channel_info):
+                channels.append(
+                    Lidarchive.MeasurementChannel(
+                        name = channel_name,
+                        resolution = channel["bin_width"],
+                        wavelength = int ( channel["wavelength"].split('.')[0] ),
+                        laser_used = channel["laser_used"],
+                        adcbits = channel["ADCbits"],
+                        analog = channel["analog_photon"] == 0,
+                        active = channel["active"]
+                    )
+                )
+                
+            info["extra"] = {"custom_field": licel_file["custom_field"]}
+            
+            return info, channels
+            
+        # def __init__(self, path, start_datetime, end_datetime, site, type = MeasurementType.UNKNOWN):
+        def __init__ ( self, path ):
             self.path = path
-            self.start_datetime = start_datetime
-            self.end_datetime = end_datetime
-            self.site = site
-            self.type = type
-
-            licel_measurement = LicelLidarMeasurement([path])
-
             self.channels = []
-
-            for channel_name, channel in licel_measurement.channels.items():
-                self.channels.append(Lidarchive.MeasurementChannel(channel))
+            self.type = MeasurementType.UNKNOWN
+            self.custom_info = {}
+            
+            known_parsers = {
+                MeasurementType.LICEL_V2: Lidarchive.MeasurementFile.LicelV2Parser,
+                MeasurementType.LICEL_V1: Lidarchive.MeasurementFile.LicelV1Parser
+            }
+            
+            for type, parser in known_parsers.items():
+                try:
+                    info, channels = parser ( path )
+                    
+                    self.start_datetime = info["start_time"]
+                    self.end_datetime = info["end_time"]
+                    self.site = info["site"]
+                    
+                    self.extra_info = info["extra"]
+                    self.channels = channels
+                    
+                    self.type = type
+                
+                    break
+                except Exception:
+                    # Not the right parser perhaps? We'll try other ones.
+                    continue
+                
+            if self.type == MeasurementType.UNKNOWN:
+                # No parser could read this file.
+                raise ValueError (f"Could not read file {path}")
 
         def IsDark(self, dark_location = "Dark"):
             '''
@@ -76,8 +162,10 @@ class Lidarchive:
             ------------
             True if the measurement is a dark measurement, False otherwise.
             '''
-            if self.site == dark_location:
-                return True
+            if self.type == MeasurementType.LICEL_V1:
+                return self.site == dark_location
+            elif self.type == MeasurementType.LICEL_V2:
+                return self.site == dark_location or self.extra_info.get("custom_field", "") == dark_location
 
             return False
 
@@ -130,10 +218,11 @@ class Lidarchive:
             return True
 
     class Measurement:
-        def __init__(self, dark, data, number):
+        def __init__(self, dark, data, number, type = MeasurementType.UNKNOWN):
             self.dark_files = dark
             self.data_files = data
             self.number = number
+            self.type = type
 
         def DarkFiles(self):
             return self.dark_files
@@ -154,6 +243,9 @@ class Lidarchive:
                 return f"{date}_{self.NumberAsString()}"
             except:
                 return "UNKNOWN_MEASUREMENT"
+                
+        def Type(self):
+            return self.type
 
     def __init__(self, **kwargs):
         '''
@@ -265,8 +357,10 @@ class Lidarchive:
             if same_location:
                 if measurements[measurement_index - 1].Site() != measurements[measurement_index].Site():
                     location_trigger = True
+                    
+            type_trigger = measurements[measurement_index - 1].Type() != measurements[measurement_index].Type()
 
-            if gap_trigger == True or location_trigger == True:
+            if gap_trigger or location_trigger or type_trigger:
                 distinct_sets.append(cset)
 
                 cset = []
@@ -491,153 +585,6 @@ class Lidarchive:
                 
         return test_valid
 
-    def FindDarkFiles(self, measurement_date):
-
-
-        '''
-        Retrieve all dark measurements within given time stamps.
-
-        Parameters
-        -----------------
-        measurement_date: datetime object
-                    The exact time the measurement begins
-
-        Returned value
-        -----------------
-        A list of all the dark measurements found between the time parameters.
-        '''
-
-        start_date = measurement_date - timedelta(days=1)
-        end_date = measurement_date + timedelta(days=1)
-
-        dark_measurements = []
-        # Walk the folder tree:
-        for root, dirs, files, in os.walk(self.folder):
-            for file in files:
-                path = os.path.join(root, file)
-
-                try:
-                    date = self.DateFromFilename(file)
-                except Exception:
-                    # Date could not be determined from the filename
-                    # as this is most likely not a raw licel file!
-                    continue
-
-                if date == None:
-                    continue
-                # Only read the files that are between specified dates:
-                good_file = False
-                if start_date == None:
-                    if end_date == None:
-                        good_file = True
-                    elif date <= end_date:
-                        good_file = True
-                elif end_date == None:
-                    if date >= start_date:
-                        good_file = True
-                elif date >= start_date and date <= end_date:
-                    good_file = True
-
-                if good_file == True:
-                    try:
-                        info = self.ReadInfoFromHeader(path)
-                        measurement = Lidarchive.MeasurementFile(
-                            path=path,
-                            start_datetime=info['StartDateTime'],
-                            end_datetime=info['StopDateTime'],
-                            site=info['Site'],
-                            type=''
-                        )
-
-                        if measurement.IsDark( self.dark_location ):
-                            dark_measurements.append(measurement)
-                    except Exception as e:
-                        pass
-
-        return dark_measurements
-
-    def IdentifyDarkFile(self, segment, max_gap):
-
-        '''
-        Find the dark measurement which is assign to the given measurement.
-
-        Parameters:
-        --------------
-        segment: list of measurements
-                The measurements set which needs a dark file attached
-
-        Returned value
-        --------------
-        The dark measurement coresponding to the set
-
-        '''
-
-
-        dark_measurements = self.FindDarkFiles(segment[0].StartDateTime())
-        matching_dark_measurements = []
-        for dark_m in dark_measurements:
-            if dark_m.HasSameChannelsAs(segment[0]):
-                matching_dark_measurements.append(dark_m)
-
-        if len(matching_dark_measurements) < 1:
-            return []
-
-        if len(matching_dark_measurements) == 1:
-            return matching_dark_measurements
-
-        dark_segments = self.FilterByGap(matching_dark_measurements, max_gap, same_location=True)
-
-        # dark measurement is before the segment
-        if dark_segments[0][-1].EndDateTime() < segment[0].StartDateTime():
-            smallest_time = segment[0].StartDateTime() - dark_segments[0][-1].EndDateTime()
-
-        # dark measurement is after the segment
-        elif dark_segments[0][0].StartDateTime() > segment[-1].EndDateTime():
-            smallest_time = dark_segments[0][0].StartDateTime() - segment[-1].EndDateTime()
-
-        nearest_dark = dark_segments[0]
-
-        for dark_segment in dark_segments[1:]:
-            dark_start = dark_segment[0].StartDateTime()
-            dark_end = dark_segment[-1].EndDateTime()
-
-            segment_start = segment[0].StartDateTime()
-            segment_end = segment[-1].EndDateTime()
-
-            if dark_end < segment_start:
-                smallest_time = segment_start - dark_end if segment_start - dark_end < smallest_time else smallest_time
-                nearest_dark = dark_segment if segment_start - dark_end < smallest_time else nearest_dark
-            if segment_end < dark_start:
-                smallest_time = dark_start - segment_end if dark_start - segment_end < smallest_time else smallest_time
-                nearest_dark = dark_segment if dark_start - segment_end < smallest_time else nearest_dark
-
-
-        return nearest_dark
-
-    def MergeDarkAndMeas(self, segments, dark_file):
-        '''
-        Retrieve all measurements with dark file attached
-
-        Parameteres
-        --------------
-        segments: list of measurements
-            The measurement set
-
-        dark_file: list of measurements
-            The dark measurement
-
-        Returned value
-        --------------
-            A dictionary containing the dark measurement as the key and the measurement set
-        as the value
-        '''
-
-        merged = {}
-        merged[dark_file] = []
-        for segment in segments:
-            merged[dark_file].append(segment)
-        return merged
-
     def ContinuousMeasurements(self, max_gap=300, min_length = 1800, max_length=3600, center_type = 0):
         '''
         Retrieve the continuous measurement sets with a chosen maximum acceptable time gap
@@ -686,7 +633,7 @@ class Lidarchive:
         return data_segments
         
     @staticmethod
-    def ClosestDarkSegment ( data_segment, dark_segments ):
+    def ClosestDarkSegment ( data_segment, dark_segments, type = MeasurementType.UNKNOWN ):
         data_start = data_segment[0].StartDateTime()
         data_end = data_segment[0].EndDateTime()
         
@@ -694,6 +641,10 @@ class Lidarchive:
         best_dark_segment = None
         
         for index, dark_segment in enumerate(dark_segments):
+            if dark_segment[0].Type != type:
+                # This is not the type of data we are looking for.
+                
+                continue
             dark_start = data_segment[0].StartDateTime()
             dark_end = data_end = data_segment[0].EndDateTime()
             
@@ -769,7 +720,7 @@ class Lidarchive:
                 # This is already filtered
                 real_measurements = segment
                 # Need to find closest continuous dark segment:
-                dark_measurements = Lidarchive.ClosestDarkSegment(data_segment = segment, dark_segments = gapped_dark_segments)
+                dark_measurements = Lidarchive.ClosestDarkSegment(data_segment = segment, dark_segments = gapped_dark_segments, type = real_measurements[0].Type())
 
                 # Apply measurement number if necessary:
                 if last_start != None:
@@ -787,7 +738,8 @@ class Lidarchive:
                     self.continuousMeasurements.append(Lidarchive.Measurement(
                         dark=dark_measurements,
                         data=real_measurements,
-                        number=measurement_number
+                        number=measurement_number,
+                        type=real_measurements[0].Type()
                     ))
 
         self.accepted_gap = max_gap
@@ -916,44 +868,35 @@ class Lidarchive:
         for root, dirs, files in os.walk(self.folder):
             for file in files:
                 path = os.path.join(root, file)
-
+                
                 try:
-                    date = self.DateFromFilename(file)
-                except Exception:
-                    # Date could not be determined from the filename
-                    # as this is most likely not a raw licel file!
-                    continue
-
-                if date == None:
-                    continue
-
-                # Only read the files that are between specified dates:
-                good_file = False
-                if start_date == None:
-                    if end_date == None:
+                    file = Lidarchive.MeasurementFile( path = path )
+                    
+                    # Only read the files that are between specified dates:
+                    good_file = False
+                    
+                    date = file.StartDateTime()
+                    
+                    if start_date == None:
+                        if end_date == None:
+                            good_file = True
+                        elif date <= end_date:
+                            good_file = True
+                    elif end_date == None:
+                        if date >= start_date:
+                            good_file = True
+                    elif date >= start_date and date <= end_date:
                         good_file = True
-                    elif date <= end_date:
-                        good_file = True
-                elif end_date == None:
-                    if date >= start_date:
-                        good_file = True
-                elif date >= start_date and date <= end_date:
-                    good_file = True
-
-                if good_file == True:
-                    try:
-                        info = self.ReadInfoFromHeader(path)
+                
+                    if good_file:
+                        self.measurements.append(file)
                         
-                        self.measurements.append(Lidarchive.MeasurementFile(
-                            path=path,
-                            start_datetime=info['StartDateTime'],
-                            end_datetime=info['StopDateTime'],
-                            site=info['Site'],
-                            type=''
-                        ))
-                    except Exception as e:
-                        print(str(e))
-                        pass
+                except Exception as e:
+                    # This was most likely not a valid measurement file.
+                    #
+                    # Continue silently. Shhhh.
+                    print (str(e))
+                    continue
                     
         # Make sure we get a unique list of files!
         # Since we're walking down the folder tree, it might just so happen
@@ -965,12 +908,3 @@ class Lidarchive:
         self.measurements = [ m for m in self.measurements if m.Filename() not in seen and not seen.add(m.Filename()) ]
 
         self.measurements.sort(key=lambda x: x.StartDateTime())
-
-
-def match_lines(f1, f2):
-    list1 = f1.split()
-    list2 = f2.split()
-
-    combined = zip(list2, list1)
-    combined = dict(combined)
-    return combined 

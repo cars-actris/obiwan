@@ -1,64 +1,41 @@
 from .lidarchive import lidarchive
+from .lidarchive.lidarchive import MeasurementType
 
 from obiwan.config import Config
 from obiwan.log import logger, datalog, SetLogLevel, UseSwapFile, UseCsvDatalog
-from obiwan.lidar import SystemIndex
+from obiwan.lidar import system_index
 from obiwan.scc import scc
+
+import obiwan.converters as converters
 
 import argparse
 import datetime
-import importlib
 import os
 import sys
 import shutil
 import time
 
-from atmospheric_lidar.licel import LicelLidarMeasurement
-
 SWAP_FILE_NAME = "obiwan.swp"
 convert_resumed = []
 upload_resumed = []
 
-def Convert ( config, licel_measurement ):
-    logger.info ( "Converting %d licel files to SCC NetCDF format." % len(licel_measurement.DataFiles()) )
+def Convert ( config, measurement ):
+    # We can use this opportunity to set a more appropriate process_start information:
+    datalog.update_measurement ( measurement.Id(), ("process_start", datetime.datetime.now()) )
     
-    try:
-        system_id = system_index.GetSystemId (licel_measurement.DataFiles()[0].Path())
-    except ValueError as e:
-        logger.error ("Couldn't determine system ID for measurement '%s': %s. Skipping measurement." % (licel_measurement.DataFiles()[0].Path(), str(e)))
-        return None, None
-    except IndexError as e:
-        logger.error ( "Could not find any data files for this measurement. Skipping." )
-        return None, None
-        
-    datalog.update_measurement ( licel_measurement.Id(), ("system_id", system_id) )
-        
-    try:
-        earlinet_station_id = nc_parameters_module.general_parameters['Call sign']
-        date_str = licel_measurement.DataFiles()[0].StartDateTime().strftime('%Y%m%d')
-        measurement_number = licel_measurement.NumberAsString()
-        measurement_id = "{0}{1}{2}".format(date_str, earlinet_station_id, measurement_number)
-    except Exception as e:
-        logger.error ( "Could not determine measurement ID. Skipping..." )
+    if measurement.Type() == MeasurementType.LICEL_V1:
+        file_path, measurement_id = converters.LicelToSCC ( measurement, config.netcdf_out_dir, config.netcdf_parameters_path )
+    elif measurement.Type() == MeasurementType.LICEL_V2:
+        file_path, measurement_id = converters.LicelToSCCV2 ( measurement, config.netcdf_out_dir, config.netcdf_parameters_path )
+    else:
+        logger.error (f"Unknown measurement type.")
         return None, None
         
-    datalog.update_measurement ( licel_measurement.Id(), ("scc_measurement_id", measurement_id) )
-
-    try:
-        measurement = CustomLidarMeasurement ( [file.Path() for file in licel_measurement.DataFiles()] )
-    except:
-        logger.error ( "Could not convert measurement." )
+    if file_path is None or measurement_id is None:
+        # Conversion has failed
         return None, None
-    
-    if len(licel_measurement.DarkFiles()) > 0:
-        measurement.dark_measurement = CustomLidarMeasurement ( [file.Path() for file in licel_measurement.DarkFiles()] )
-
-    measurement = measurement.subset_by_scc_channels ()
-    measurement.set_measurement_id(measurement_number=licel_measurement.NumberAsString())
-    
-    file_path = os.path.join(config.netcdf_out_dir, f'{measurement_id}.nc')
-    
-    measurement.save_as_SCC_netcdf (filename=file_path)
+        
+    logger.debug (f"Identified raw data format: {measurement.Type()}")
     
     datalog.update_measurement_by_scc_id ( measurement_id, ("converted", True) )
     datalog.update_measurement_by_scc_id ( measurement_id, ("scc_netcdf_path", file_path) )
@@ -66,9 +43,9 @@ def Convert ( config, licel_measurement ):
     
     return file_path, measurement_id
     
-def DebugMeasurement ( licel_measurement, measurement_path, measurements_debug_dir ):
+def DebugMeasurement ( measurement, measurement_path, measurements_debug_dir ):
     if measurements_debug_dir:
-        debug_date_str = licel_measurement.DataFiles()[0].StartDateTime().strftime('%Y-%m-%d-%H-%M')
+        debug_date_str = measurement.DataFiles()[0].StartDateTime().strftime('%Y-%m-%d-%H-%M')
         debug_dir = os.path.join ( measurements_debug_dir, debug_date_str )
 
         if os.path.exists (debug_dir):
@@ -87,13 +64,13 @@ def DebugMeasurement ( licel_measurement, measurement_path, measurements_debug_d
     os.makedirs ( debug_dark_dir )
     
     # logger.debug ("Raw data files:")
-    for file in licel_measurement.DataFiles():
+    for file in measurement.DataFiles():
         # logger.debug ( os.path.basename(file.Path()) )
         if measurements_debug_dir:
             shutil.copy2 ( file.Path(), debug_dir )
         
     # logger.debug ("Raw dark files:")
-    for file in licel_measurement.DarkFiles():
+    for file in measurement.DarkFiles():
         # logger.debug ( os.path.basename(file.Path()) )
         if measurements_debug_dir:
             shutil.copy2 ( file.Path(), debug_dark_dir )
@@ -157,81 +134,6 @@ def Upload (config, measurement_id, measurement_date, file_path, **kwargs):
         datalog.update_measurement_by_scc_id ( measurement_id, ( "result", "Error uploading to SCC" ) )
         
     return None
-    
-def ResumePastWork ():
-    if not datalog.load():
-        return []
-        
-    if len(datalog.measurements.keys()) < 1:
-        return []
-        
-    logger.warning ("obiwan was interrupted during previous task. Resuming...")
-    
-    if not datalog.config["convert"] and not scc.logged_in:
-        scc.Login()
-
-    resume_download = [
-        measurement["scc_measurement_id"] for measurement in datalog.measurements.values()
-        if not measurement["downloaded"] and datalog.config["download"] and measurement["uploaded"]
-    ]
-
-    resume_convert = [
-        measurement for measurement in datalog.measurements.values()
-        if not measurement["converted"]
-    ]
-
-    resume_upload = [
-        measurement for measurement in datalog.measurements.values()
-        if not datalog.config["convert"] and measurement["converted"] and not measurement["uploaded"]
-    ]
-    
-    logger.warning (f"Not converted: {len(resume_convert)}, not uploaded: {len(resume_upload)}, not downloaded: {len(resume_download)} ")
-
-    if len(resume_convert):
-        logger.info(f"Retrying to convert {len(resume_convert)} measurements...")
-        
-    for measurement in resume_convert:
-        try:
-            file_path, measurement_id = Convert ( datalog.config["yaml"], measurement["licel_measurement"] )
-            convert_resumed.append ( measurement["licel_measurement"] )
-            
-            if not measurement_id:
-                continue
-            
-            if datalog.config["debug"]:
-                if datalog.config["yaml"].measurements_debug_dir:
-                    DebugMeasurement (measurement["licel_measurement"], file_path, datalog.config["yaml"].measurements_debug_dir)
-                    
-            logger.info(f"{measurement_id} added to list of measurements to be uploaded.")
-            resume_upload.append(measurement)
-        except Exception as e:
-            logger.error ( "Error processing measurement: %s" % (str(e)) )
-            
-    if len(resume_upload):
-        logger.info(f"Retrying to upload {len(resume_upload)} measurements...")
-        
-    for measurement in resume_upload:
-        try:
-            if not datalog.config["convert"]:
-                measurement_id = Upload (
-                    datalog.config["yaml"],
-                    measurement["scc_measurement_id"],
-                    measurement["licel_measurement"].DataFiles()[-1].EndDateTime(),
-                    measurement["scc_netcdf_path"],
-                    reprocess = datalog.config["reprocess"],
-                    replace = datalog.config["replace"]
-                )
-                
-                upload_resumed.append ( measurement["licel_measurement"] )
-                
-                if measurement_id:
-                    logger.info(f'{measurement["scc_measurement_id"]} added to list of measurements to be downloaded.')
-                    resume_download.append(measurement["scc_measurement_id"])
-                    
-        except Exception as e:
-            logger.error ( "Error processing measurement: %s" % (str(e)) )
-            
-    return resume_download
 
 parser = argparse.ArgumentParser(description="Tool for processing Licel lidar measurements using the Single Calculus Chain.")
 parser.add_argument("folder", help="The path to the folder you want to scan.")
@@ -279,16 +181,6 @@ UseCsvDatalog ( args.datalog )
 
 test_lists = config.test_lists
 
-sys.path.append ( os.path.dirname (config.netcdf_parameters_path) )
-netcdf_parameters_filename = os.path.basename ( config.netcdf_parameters_path )
-if netcdf_parameters_filename.endswith ('.py'):
-    netcdf_parameters_filename = netcdf_parameters_filename[:-3]
-
-nc_parameters_module = importlib.import_module ( netcdf_parameters_filename )
-
-class CustomLidarMeasurement(LicelLidarMeasurement):
-    extra_netcdf_parameters = nc_parameters_module
-
 lidarchive = lidarchive.Lidarchive ( measurement_location = config.measurement_location, dark_location = config.dark_location, tests = config.test_lists )
 lidarchive.SetFolder (args.folder)
 
@@ -315,15 +207,10 @@ if args.continuous:
         if start_date is None:
             start_date = last_processed_date
 
-system_index = SystemIndex (config.scc_configurations_folder)
+system_index.ReadFolder (config.scc_configurations_folder)
 
 if not args.convert:
     scc.Login()
-
-if args.resume:
-    resume_download = ResumePastWork ()
-    to_download += resume_download
-    # datalog.reset()
 
 log_header_run_time = "Run started at %s" % ( datetime.datetime.now().strftime ( "%Y-%m-%d %H:%M:%S" ) )
 logger.info ( log_header_run_time, extra={'scope': 'start'} )
@@ -350,117 +237,132 @@ logger.info ( "Identifying measurements. This can take a few minutes...")
 lidarchive.ReadFolder (start_date, end_date)
 logger.debug ( "Found %d files" % len (lidarchive.Measurements()) )
 
-licel_measurements = lidarchive.ContinuousMeasurements (config.max_acceptable_gap, config.min_acceptable_length, config.max_acceptable_length, config.center_type)
-logger.info ( "Identified %d different continuous measurements with a maximum acceptable gap of %ds" % (len (licel_measurements), config.max_acceptable_gap) )
+if args.resume:
+    if datalog.load() is not None:
+        to_download = [
+            measurement["scc_measurement_id"] for measurement in datalog.measurements.values()
+            if not measurement["downloaded"] and datalog.config["download"] and measurement["uploaded"]
+        ]
+
+        to_convert = [
+            measurement for measurement in datalog.measurements.values()
+            if not measurement["converted"]
+        ]
+
+        to_upload = [
+            measurement for measurement in datalog.measurements.values()
+            if not datalog.config["convert"] and measurement["converted"] and not measurement["uploaded"]
+        ]
+        
+        if len(to_download) > 0 or len(to_convert) > 0 or len(to_upload) > 0:
+            logger.warning ("Found previous unfinished tasks")
+            logger.warning (f"Not converted: {len(to_convert)}, not uploaded: {len(to_upload)}, not downloaded: {len(to_download)} ")
+
+new_measurements = lidarchive.ContinuousMeasurements (config.max_acceptable_gap, config.min_acceptable_length, config.max_acceptable_length, config.center_type)
+logger.info ( "Identified %d different continuous measurements with a maximum acceptable gap of %ds" % (len (new_measurements), config.max_acceptable_gap) )
 
 if args.test_files:
     logger.info("Copying test files...")
     lidarchive.CopyTestFiles ( config.tests_dir )
 
-for licel_measurement in licel_measurements:
-    datalog.update_measurement ( licel_measurement.Id(), ("licel_measurement", licel_measurement), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("scc_netcdf_path", ""), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("converted", False), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("uploaded", False) )
-    datalog.update_measurement ( licel_measurement.Id(), ("downloaded", False), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("system_id", None), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("scc_measurement_id", None), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("already_on_scc", False), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("result", ""), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("scc_version", ""), save=False )
-    datalog.update_measurement ( licel_measurement.Id(), ("process_start", datetime.datetime.now()), save=False )
-    
+logger.info ( "Starting processing" )
+
 datalog.update_config(("convert", args.convert), save=False)
 datalog.update_config(("reprocess", args.reprocess), save=False)
 datalog.update_config(("replace", args.replace), save=False)
 datalog.update_config(("download", args.download), save=False)
+datalog.update_config(("wait", args.wait), save=False)
 datalog.update_config(("folder", os.path.abspath(args.folder)), save=False)
 datalog.update_config(("last_processed_date", None), save=False)
 datalog.update_config(("debug", args.debug), save=False)
+datalog.update_config(("folder", args.folder), save = False)
 datalog.update_config(("yaml", config), save=True)
 
-logger.info ( "Starting processing" )
+for measurement in new_measurements:
+    datalog.initialize_measurement ( measurement )
 
-for index, licel_measurement in enumerate(licel_measurements):
+for index, measurement in enumerate(datalog.measurements.values()):
     # try:
-    logger.info ( f"Started processing measurement {index+1}/{len(licel_measurements)}" )
+    logger.info ( f"Started processing measurement {index+1}/{len(datalog.measurements)}" )
     
-    if licel_measurement.Id() in [m.Id() for m in convert_resumed]:
-        logger.warning ( "This measurement measurement {licel_measurement.Id()} was processed already because of --convert. Skipping it." )
+    needs_convert = not measurement["converted"]
+    needs_upload = measurement["want_upload"] and not measurement["uploaded"]
+    needs_download = measurement["want_download"] and not measurement["downloaded"]
+    needs_debug = measurement["want_debug"]
+    
+    if needs_convert:
+        file_path, measurement_id = Convert ( config, measurement["measurement"] )
+    else:
+        file_path = measurement["scc_netcdf_path"]
+        measurement_id = measurement["scc_measurement_id"]
+        
+    if not measurement_id or not file_path:
+        logger.error ("Measurement could not be converted. Skipping...")
         continue
     
-    file_path, measurement_id = Convert ( config, licel_measurement )
-
-    if not measurement_id:
-        continue
-
-    if args.debug:
+    if needs_debug:
         if config.measurements_debug_dir:
-            DebugMeasurement (licel_measurement, file_path, config.measurements_debug_dir)
+            DebugMeasurement(measurement["measurement"], file_path, config.measurements_debug_dir)
             
-    if not args.convert:
-        if licel_measurement.Id() in [m.Id() for m in upload_resumed]:
-            logger.warning ( "This measurement measurement {licel_measurement.Id()} was processed already because of --convert. Skipping it." )
-            continue
-            
+    if needs_upload:
         measurement_id = Upload (
             config,
             measurement_id,
-            licel_measurement.DataFiles()[-1].EndDateTime(),
+            measurement["measurement"].DataFiles[-1].EndDateTime(),
             file_path,
-            reprocess = args.reprocess,
-            replace = args.replace
+            reprocess = measurement["reprocess_enabled"],
+            replace = measurement["replace_enabled"]
         )
-        
-        if measurement_id:
-            to_download.append(measurement_id)
-            
-    # except Exception as e:
-        # logger.error ( "Error processing measurement: %s" % (str(e)) )
+
+to_download = list ( set ([
+    measurement for measurement in datalog.measurements.values()
+    if measurement["want_download"] and not measurement["downloaded"]
+]))
 
 if args.download:
     logger.info ( "Downloading SCC products" )
     
-    to_download = list(set(to_download))
-    
-    for measurement_id in to_download:
-        if args.wait:
-            result = scc.client.monitor_processing ( measurement_id, exit_if_missing = not args.wait )
-            logger.debug ( "Waiting for processing to finish and downloading files...", extra={'scope': measurement_id} )
+    for measurement in to_download:
+        if measurement["wait_enabled"]:
+            result = scc.client.monitor_processing ( measurement["scc_measurement_id"], exit_if_missing = not measurement["wait_enabled"] )
+            logger.debug ( "Waiting for processing to finish and downloading files...", extra={'scope': measurement["scc_measurement_id"]} )
         else:
-            result, _ = scc.client.get_measurement(measurement_id)
+            result, _ = scc.client.get_measurement(measurement["scc_measurement_id"])
             
         try:
             if result is not None:
-                logger.debug ( "Processing finished", extra={'scope': measurement_id} )
+                logger.debug ( "Processing finished", extra={'scope': measurement["scc_measurement_id"]} )
                 
                 try:
-                    scc_version = scc.GetSCCVersion ( scc.client.output_dir, measurement_id )
+                    scc_version = scc.GetSCCVersion ( scc.client.output_dir, measurement["scc_measurement_id"] )
                 except Exception as e:
                     if result.elpp != 127:
-                        logger.error ( "No SCC products found", extra={'scope': measurement_id} )
-                        datalog.update_measurement_by_scc_id( measurement_id, ("result", "No SCC products found") )
+                        print (measurement)
+                        logger.error ( "No SCC products found", extra={'scope': measurement["scc_measurement_id"]} )
+                        datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("result", "No SCC products found") )
                     else:
-                        logger.error ( "Unknown error in SCC products", extra={'scope': measurement_id} )
-                        datalog.update_measurement_by_scc_id( measurement_id, ("result", "Unknown error in SCC products") )
+                        logger.error ( "Unknown error in SCC products", extra={'scope': measurement["scc_measurement_id"]} )
+                        datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("result", "Unknown error in SCC products") )
                     
                     scc_version = "Unknown SCC Version! Check preprocessed NetCDF files."
                     logger.error ( e )
                     continue
                     
-                logger.info ( scc_version, extra={'scope': measurement_id} )
-                datalog.update_measurement_by_scc_id( measurement_id, ("downloaded", True) )
-                datalog.update_measurement_by_scc_id( measurement_id, ("result", scc.client.output_dir) )
-                datalog.update_measurement_by_scc_id( measurement_id, ("scc_version", scc_version) )
+                logger.info ( scc_version, extra={'scope': measurement["scc_measurement_id"]} )
+                datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("downloaded", True) )
+                datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("result", scc.client.output_dir) )
+                datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("scc_version", scc_version) )
             elif args.wait:
-                logger.error ( "Download failed", extra={'scope': measurement_id} )
-                datalog.update_measurement_by_scc_id( measurement_id, ("result", "Error downloading SCC products") )
+                logger.error ( "Download failed", extra={'scope': measurement["scc_measurement_id"]} )
+                datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("result", "Error downloading SCC products") )
             else:
-                logger.info ( "Measurement was not yet processed by the SCC, will not wait for it.", extra={'scope': measurement_id} )
-                datalog.update_measurement_by_scc_id( measurement_id, ("result", "SCC did not finish processing in due time.") )
+                logger.info ( "Measurement was not yet processed by the SCC, will not wait for it.", extra={'scope': measurement["scc_measurement_id"]} )
+                datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("result", "SCC did not finish processing in due time.") )
         except Exception as e:
             logger.error ( f"Error downloading SCC products: {str(e)}" )
-            datalog.update_measurement_by_scc_id( measurement_id, ("result", "Error downloading SCC products") )
+            datalog.update_measurement_by_scc_id( measurement["scc_measurement_id"], ("result", "Error downloading SCC products") )
+else:
+    logger.info("SCC products download is not enabled. You can enable it with --download.")
             
 if args.datalog is not None:
     datalog.write_csv()
