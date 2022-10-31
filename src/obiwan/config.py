@@ -12,13 +12,20 @@ class Config:
         if file_path is None:
             fp = Config.compute_path ( DEFAULT_CFG_FILE )
             
-        with open (fp) as yaml_file:
-            try:
-                config = yaml.safe_load (yaml_file)
-            except Exception as e:
-                logger.error(f"Could not parse YAML configuration file ({file_path})!")
-                logger.error(f"Error: {str(e)}")
-                sys.exit (1)
+        try:
+            with open (fp, 'r') as yaml_file:
+                try:
+                    config = yaml.safe_load (yaml_file)
+                    print (yaml_file)
+                    print (config)
+                except Exception as e:
+                    logger.error(f"Could not parse YAML configuration file ({file_path})!")
+                    logger.error(f"Error: {str(e)}")
+                    raise e
+        except Exception as e:
+            logger.error ( f"Could not read configuration file {fp}" )
+            logger.error (f"{str(e)}")
+            raise e
                 
         self.file_path = fp
         

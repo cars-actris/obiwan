@@ -263,6 +263,7 @@ if args.folder is None:
 try:
     config = Config ( args.cfg )
 except Exception as e:
+    logger.error ( "Error loading configuration file. Exiting..." )
     sys.exit (1)
     
 scc.Initialize(
