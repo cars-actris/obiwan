@@ -34,8 +34,8 @@ These available parameters can be divided in 3 categories:
 ### General parameter configuration
 
 This configuration resides in a [YAML](https://en.wikipedia.org/wiki/YAML) file, which allows the user to set up quasi-static parameters.
-Folder or file paths can be provided as absolute values (e.g.: `C:\Users\obiwan\conf\obiwan.config.yaml`) or as relative (e.g.: `conf\obiwan.config.yaml`).
-Keep in mind that paths are relative to the user's folder. On Windows that would be `C:\Users\User`, while on Linux that would be `/home/user`.
+Folder or file paths can be provided as absolute values (e.g.: `C:\Users\obiwan\conf\obiwan.config.yaml`) or as relative (e.g.: `conf/obiwan.config.yaml`).
+Keep in mind that paths are relative to configuration file obiwan is using.
 
 The options available in this configuration file affect the measurement detection, conversion and processing algorithm. A sample file is provided in `conf/obiwan.config.sample.yaml`. Available configuration parameters are:
 

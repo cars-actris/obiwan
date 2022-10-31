@@ -4,20 +4,21 @@ from pathlib import Path
 import os
 import yaml
 
-DEFAULT_CFG_FILE = "conf/obiwan.config.yaml"
+DEFAULT_CFG_FILE = "obiwan/obiwan.config.yaml"
 DEFAULT_TESTS_FOLDER = "data/tests"
 
 class Config:
     def __init__ ( self, file_path = None ):
         if file_path is None:
             fp = Config.compute_path ( DEFAULT_CFG_FILE )
+        else:
+            fp = os.path.abspath ( file_path )
             
         try:
+            logger.debug ( f"Trying to read configuration file {fp}" )
             with open (fp, 'r') as yaml_file:
                 try:
                     config = yaml.safe_load (yaml_file)
-                    print (yaml_file)
-                    print (config)
                 except Exception as e:
                     logger.error(f"Could not parse YAML configuration file ({file_path})!")
                     logger.error(f"Error: {str(e)}")
@@ -29,13 +30,15 @@ class Config:
                 
         self.file_path = fp
         
+        config_dir = os.path.abspath ( os.path.dirname ( self.file_path ) )
+        
         # Folders:
-        self.scc_configurations_folder = Config.compute_path ( config['scc_configurations_folder'] )
-        self.netcdf_out_dir = Config.compute_path ( config['netcdf_out_folder'] )
-        self.scc_output_dir = Config.compute_path ( config['scc_output_dir'] )
+        self.scc_configurations_folder = Config.compute_path ( config['scc_configurations_folder'], root_folder = config_dir )
+        self.netcdf_out_dir = Config.compute_path ( config['netcdf_out_folder'], root_folder = config_dir )
+        self.scc_output_dir = Config.compute_path ( config['scc_output_dir'], root_folder = config_dir )
         
         # Lidar system parameter file:
-        self.netcdf_parameters_path = Config.compute_path ( config['system_netcdf_parameters'] )
+        self.netcdf_parameters_path = Config.compute_path ( config['system_netcdf_parameters'], root_folder = config_dir )
         
         # SCC Configuration:
         self.scc_basic_credentials = tuple ( config['scc_basic_credentials'] )
@@ -54,10 +57,10 @@ class Config:
         self.center_type = config['measurement_center_type']
         
         # Measurements debug:
-        self.measurements_debug_dir = Config.compute_path ( config['measurements_debug_dir'] )
+        self.measurements_debug_dir = Config.compute_path ( config['measurements_debug_dir'], root_folder = config_dir )
         
         # Test folder:
-        self.tests_dir = Config.compute_path (DEFAULT_TESTS_FOLDER)
+        self.tests_dir = Config.compute_path (DEFAULT_TESTS_FOLDER, root_folder = config_dir)
         
         self.test_lists = {}
         
@@ -85,17 +88,20 @@ class Config:
             os.makedirs ( self.tests_dir )
                 
     @staticmethod
-    def compute_path ( path ):
+    def compute_path ( path, root_folder = None ):
         if ( os.path.isabs ( path ) ):
             # If the user configured an absolute path
             # use that without any questions asked:
             return path
             
+        root = root_folder
+        if root is None:
+            root = Path.home()
+            
         # Otherwise, if a relative path was provided,
         # get path relative to the parent folder of this file:
         
-        # relpath = os.path.join ( os.path.dirname ( os.path.realpath ( __file__ ) ), '..', '..', path )
-        relpath = os.path.join ( Path.home(), path )
+        relpath = os.path.join ( root, path )
         abspath = os.path.abspath ( os.path.normpath ( relpath ) )
         
         return abspath
