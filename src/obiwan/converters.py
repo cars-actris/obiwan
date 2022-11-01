@@ -10,7 +10,7 @@ from atmospheric_lidar.licelv2 import LicelLidarMeasurementV2
 
 import traceback
 
-def LicelToSCC ( measurement, out_folder, netcdf_parameters_path ):
+def LicelToSCC ( measurement, out_folder, system_netcdf_parameters ):
     logger.info ( "Converting %d Licel files to SCC NetCDF format." % len(measurement.DataFiles()) )
     
     try:
@@ -23,6 +23,13 @@ def LicelToSCC ( measurement, out_folder, netcdf_parameters_path ):
         return None, None
         
     datalog.update_measurement ( measurement.Id(), ("system_id", system_id) )
+    
+    try:
+        netcdf_parameters_path = system_netcdf_parameters[system_id]
+    except KeyError as e:
+        # No netcdf parameters file found for this system!
+        logger.error ( f"Could not find netcdf parameters file for system ID {system_id}" )
+        return None, None
         
     try:
         sys.path.append ( os.path.dirname (netcdf_parameters_path) )
@@ -66,6 +73,9 @@ def LicelToSCC ( measurement, out_folder, netcdf_parameters_path ):
                 measurement.dark_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DarkFiles()], use_id_as_name=True )
                 
             custom_measurement = custom_measurement.subset_by_scc_channels ()
+            
+        channel_ids = ", ".join(custom_measurement.channels.keys())
+        logger.debug(f"Measurement channels: {channel_ids}", extra = { 'scope': 'converter' })
 
         custom_measurement.set_measurement_id(measurement_number=measurement.NumberAsString())
         
@@ -78,7 +88,7 @@ def LicelToSCC ( measurement, out_folder, netcdf_parameters_path ):
     
     return file_path, measurement_id
     
-def LicelToSCCV2 ( measurement, out_folder, netcdf_parameters_path ):
+def LicelToSCCV2 ( measurement, out_folder, system_netcdf_parameters ):
     logger.info ( "Converting %d Licel V2 files to SCC NetCDF format." % len(measurement.DataFiles()) )
     
     try:
@@ -91,6 +101,13 @@ def LicelToSCCV2 ( measurement, out_folder, netcdf_parameters_path ):
         return None, None
         
     datalog.update_measurement ( measurement.Id(), ("system_id", system_id) )
+    
+    try:
+        netcdf_parameters_path = system_netcdf_parameters[system_id]
+    except KeyError:
+        # No netcdf parameters file found for this system!
+        logger.error ( f"Could not find netcdf parameters file for system ID {system_id}" )
+        return None, None
         
     try:
         sys.path.append ( os.path.dirname (netcdf_parameters_path) )
@@ -120,6 +137,7 @@ def LicelToSCCV2 ( measurement, out_folder, netcdf_parameters_path ):
             measurement.dark_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DarkFiles()] )
 
         custom_measurement = custom_measurement.subset_by_scc_channels ()
+        
         custom_measurement.set_measurement_id(measurement_number=measurement.NumberAsString())
         
         file_path = os.path.join(out_folder, f'{measurement_id}.nc')

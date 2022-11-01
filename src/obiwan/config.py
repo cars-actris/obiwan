@@ -37,8 +37,15 @@ class Config:
         self.netcdf_out_dir = Config.compute_path ( config['netcdf_out_folder'], root_folder = config_dir )
         self.scc_output_dir = Config.compute_path ( config['scc_output_dir'], root_folder = config_dir )
         
-        # Lidar system parameter file:
-        self.netcdf_parameters_path = Config.compute_path ( config['system_netcdf_parameters'], root_folder = config_dir )
+        # Lidar system parameter files:
+        self.system_netcdf_parameters = config.get('system_netcdf_parameters', {})
+        
+        # Some users might still have an older configuration file:
+        if type(self.system_netcdf_parameters) is not dict:
+            self.system_netcdf_parameters = {}
+        
+        for system_id, file_path in self.system_netcdf_parameters.items():
+            self.system_netcdf_parameters[ system_id ] = Config.compute_path ( file_path, root_folder = config_dir )
         
         # SCC Configuration:
         self.scc_basic_credentials = tuple ( config['scc_basic_credentials'] )

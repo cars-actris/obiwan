@@ -23,10 +23,15 @@ def Convert ( config, measurement ):
     # We can use this opportunity to set a more appropriate process_start information:
     datalog.update_measurement ( measurement.Id(), ("process_start", datetime.datetime.now()) )
     
+    try:
+        logger.debug (f"Identified raw data format: {measurement.Type()}")
+    except:
+        logger.debug(f"Could not read measurement type.")
+    
     if measurement.Type() == MeasurementType.LICEL_V1:
-        file_path, measurement_id = converters.LicelToSCC ( measurement, config.netcdf_out_dir, config.netcdf_parameters_path )
+        file_path, measurement_id = converters.LicelToSCC ( measurement, config.netcdf_out_dir, config.system_netcdf_parameters )
     elif measurement.Type() == MeasurementType.LICEL_V2:
-        file_path, measurement_id = converters.LicelToSCCV2 ( measurement, config.netcdf_out_dir, config.netcdf_parameters_path )
+        file_path, measurement_id = converters.LicelToSCCV2 ( measurement, config.netcdf_out_dir, config.system_netcdf_parameters )
     else:
         logger.error (f"Unknown measurement type.")
         return None, None
@@ -34,8 +39,6 @@ def Convert ( config, measurement ):
     if file_path is None or measurement_id is None:
         # Conversion has failed
         return None, None
-        
-    logger.debug (f"Identified raw data format: {measurement.Type()}")
     
     datalog.update_measurement_by_scc_id ( measurement_id, ("converted", True) )
     datalog.update_measurement_by_scc_id ( measurement_id, ("scc_netcdf_path", file_path) )

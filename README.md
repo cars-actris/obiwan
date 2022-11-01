@@ -43,9 +43,14 @@ The options available in this configuration file affect the measurement detectio
 # Sets the path for the sample files used to determine the SCC System ID when uploading data to the Single Calculus Chain
 scc_configurations_folder: data/Samples
 
-# Path to the lidar system extra parameters, needed for creating the NetCDF files required by Single Calculus Chain.
-# Please check the atmospheric-lidar package documentation for more information.
-system_netcdf_parameters: conf/system/rali_netcdf_parameters 2020.py
+# Path to the Licel lidar system extra parameters, needed for creating the NetCDF files required by Single Calculus Chain.
+# You need to supply one parameter file for each SCC System ID you are using.
+# Please check the atmospheric-lidar package documentation for more information on the required contents of these files.
+system_netcdf_parameters:
+    310: conf/system/rali_netcdf_parameters 2020.py
+    312: conf/system/rali_netcdf_parameters 2020.py
+    375: conf/system/ipral_netcdf_parameters_375-376-377-378_auto.py
+    376: conf/system/ipral_netcdf_parameters_375-376-377-378_auto_v2.py
 
 # This parameter will be used to identify real measurements. The algorithm will look for this string in the location field
 # in the raw Licel files. In this sample, the instrument will use "Buchares" location:

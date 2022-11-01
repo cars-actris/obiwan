@@ -94,6 +94,6 @@ class SystemIndex:
         if len(compatible_ids) > 1:
             raise ValueError ( "More than one configuration matches." )
             
-        return compatible_ids[0]
+        return int(compatible_ids[0])
         
 system_index = SystemIndex()
