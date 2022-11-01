@@ -34,8 +34,8 @@ These available parameters can be divided in 3 categories:
 ### General parameter configuration
 
 This configuration resides in a [YAML](https://en.wikipedia.org/wiki/YAML) file, which allows the user to set up quasi-static parameters.
-Folder or file paths can be provided as absolute values (e.g.: `C:\Users\obiwan\conf\obiwan.config.yaml`) or as relative (e.g.: `conf/obiwan.config.yaml`).
-Keep in mind that paths are relative to configuration file obiwan is using.
+Folder or file paths can be provided as absolute values (e.g.: `C:\Users\obiwan\conf\system\rali_netcdf_parameters 2020.py`) or as relative (e.g.: `conf/system/rali_netcdf_parameters 2020.py`).
+Keep in mind that paths are relative to configuration file obiwan is using. The two examples above are equivalent if the configuration file being used resides in `C:\Users\obiwan`.
 
 The options available in this configuration file affect the measurement detection, conversion and processing algorithm. A sample file is provided in `conf/obiwan.config.sample.yaml`. Available configuration parameters are:
 
