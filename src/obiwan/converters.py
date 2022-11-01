@@ -8,6 +8,8 @@ import sys
 from atmospheric_lidar.licel import LicelLidarMeasurement
 from atmospheric_lidar.licelv2 import LicelLidarMeasurementV2
 
+import traceback
+
 def LicelToSCC ( measurement, out_folder, netcdf_parameters_path ):
     logger.info ( "Converting %d Licel files to SCC NetCDF format." % len(measurement.DataFiles()) )
     
@@ -38,27 +40,41 @@ def LicelToSCC ( measurement, out_folder, netcdf_parameters_path ):
         measurement_number = measurement.NumberAsString()
         measurement_id = "{0}{1}{2}".format(date_str, earlinet_station_id, measurement_number)
     except Exception as e:
-        print(e)
         logger.error ( "Could not determine measurement ID. Skipping..." )
         return None, None
         
     datalog.update_measurement ( measurement.Id(), ("scc_measurement_id", measurement_id) )
 
     try:
-        custom_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DataFiles()] )
-    except:
-        logger.error ( "Could not convert measurement." )
-        return None, None
-    
-    if len(measurement.DarkFiles()) > 0:
-        measurement.dark_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DarkFiles()] )
+        try:
+            custom_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DataFiles()], use_id_as_name=False )
+            
+            if len(measurement.DarkFiles()) > 0:
+                measurement.dark_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DarkFiles()], use_id_as_name=False )
+                
+            custom_measurement = custom_measurement.subset_by_scc_channels ()
+        except (IOError, ValueError):
+            # This could happen because the system has two telescopes so channel names get duplicated
+            # inside atmospheric-lidar which throws an IOError.
+            #
+            # A ValueError can be thrown if there are no common channels between the Licel file
+            # and the extra_netcdf_parameters configuration file. In this case, it might be that the configuration file
+            # uses digitizer IDs as channel identifiers.
+            custom_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DataFiles()], use_id_as_name=True )
+            
+            if len(measurement.DarkFiles()) > 0:
+                measurement.dark_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DarkFiles()], use_id_as_name=True )
+                
+            custom_measurement = custom_measurement.subset_by_scc_channels ()
 
-    custom_measurement = custom_measurement.subset_by_scc_channels ()
-    custom_measurement.set_measurement_id(measurement_number=measurement.NumberAsString())
-    
-    file_path = os.path.join(out_folder, f'{measurement_id}.nc')
-    
-    custom_measurement.save_as_SCC_netcdf (filename=file_path)
+        custom_measurement.set_measurement_id(measurement_number=measurement.NumberAsString())
+        
+        file_path = os.path.join(out_folder, f'{measurement_id}.nc')
+        
+        custom_measurement.save_as_SCC_netcdf (filename=file_path)
+    except Exception as e:
+        logger.error ( f"Could not convert measurement. {traceback.format_exc()}" )
+        return None, None
     
     return file_path, measurement_id
     
@@ -92,7 +108,6 @@ def LicelToSCCV2 ( measurement, out_folder, netcdf_parameters_path ):
         measurement_number = measurement.NumberAsString()
         measurement_id = "{0}{1}{2}".format(date_str, earlinet_station_id, measurement_number)
     except Exception as e:
-        print(e)
         logger.error ( "Could not determine measurement ID. Skipping..." )
         return None, None
         
@@ -100,18 +115,18 @@ def LicelToSCCV2 ( measurement, out_folder, netcdf_parameters_path ):
 
     try:
         custom_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DataFiles()] )
-    except:
-        logger.error ( "Could not convert measurement." )
-        return None, None
-    
-    if len(measurement.DarkFiles()) > 0:
-        measurement.dark_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DarkFiles()] )
+        
+        if len(measurement.DarkFiles()) > 0:
+            measurement.dark_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DarkFiles()] )
 
-    custom_measurement = custom_measurement.subset_by_scc_channels ()
-    custom_measurement.set_measurement_id(measurement_number=measurement.NumberAsString())
-    
-    file_path = os.path.join(out_folder, f'{measurement_id}.nc')
-    
-    custom_measurement.save_as_SCC_netcdf (filename=file_path)
+        custom_measurement = custom_measurement.subset_by_scc_channels ()
+        custom_measurement.set_measurement_id(measurement_number=measurement.NumberAsString())
+        
+        file_path = os.path.join(out_folder, f'{measurement_id}.nc')
+        
+        custom_measurement.save_as_SCC_netcdf (filename=file_path)
+    except Exception as e:
+        logger.error ( f"Could not convert measurement. {traceback.format_exc()}" )
+        return None, None
     
     return file_path, measurement_id

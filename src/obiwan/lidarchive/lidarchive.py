@@ -8,6 +8,8 @@ import glob
 import os
 import shutil
 
+from obiwan.log import logger
+
 from enum import Enum
 
 licel_file_header_format = ['Filename',
@@ -116,7 +118,12 @@ class Lidarchive:
                     )
                 )
                 
-            info["extra"] = {"custom_field": licel_file["custom_field"]}
+            # Custom field is optional in Licel V2 files, so we must check if it exists:
+            custom_field = ""
+            if hasattr(licel_file, 'custom_field'):
+                custom_field = licel_file.custom_field
+                
+            info["extra"] = {"custom_field": custom_field}
             
             return info, channels
             
@@ -146,7 +153,7 @@ class Lidarchive:
                     self.type = type
                 
                     break
-                except Exception:
+                except:
                     # Not the right parser perhaps? We'll try other ones.
                     continue
                 
@@ -516,6 +523,14 @@ class Lidarchive:
                 continue
 
             segment.append(measurements[index])
+            
+        # We might have a residual open segment.
+        # Check if it satisfies the length criteria before adding it
+        # to the final array.
+        if len(segment) > 0:
+            segment_length = (segment[-1].EndDateTime() - segment[0].StartDateTime()).total_seconds()
+            if segment_length > min_length:
+                segments.append(segment)
 
         return segments
         
