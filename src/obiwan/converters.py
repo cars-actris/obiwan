@@ -1,35 +1,55 @@
-from obiwan.log import logger, datalog
+from obiwan.log import logger, datalog, Datalog
 from obiwan.lidar import system_index
+from obiwan.config import ExtraNCParameters
+
+from obiwan.lidarchive.lidarchive import MeasurementSet
 
 import importlib
 import os
 import sys
+
+from pathlib import Path
+from typing import Union
 
 from atmospheric_lidar.licel import LicelLidarMeasurement
 from atmospheric_lidar.licelv2 import LicelLidarMeasurementV2
 
 import traceback
 
-def LicelToSCC ( measurement, out_folder, system_netcdf_parameters ):
+def LicelToSCC ( measurement : MeasurementSet, out_folder : Path, system_netcdf_parameters : ExtraNCParameters ) -> Union[Path, None]:
+    """
+    Convert a measurement set consisting of older specification Licel raw files
+    to SCC NetCDF input file format.
+    
+    Args:
+        measurement (:obj:`MeasurementSet`): Measurement set to be converted.
+        out_folder (:obj:`Path`): Path to the folder where to store the resulting NetCDF file.
+        system_netcdf_parameters (:obj:`ExtraNCParameters`): Repository of extra NetCDF parameters
+            used by `atmospheric-lidar` to perform the conversion.
+            
+    Returns:
+        :obj:`Path` of the final SCC NetCDF input file. If the conversion cannot be done, it will return None.
+    """
     logger.info ( "Converting %d Licel files to SCC NetCDF format." % len(measurement.DataFiles()) )
     
     try:
         system_id = system_index.GetSystemId (measurement.DataFiles()[0])
     except ValueError as e:
         logger.error ("Couldn't determine system ID for measurement '%s': %s." % (measurement.DataFiles()[0].Path(), str(e)))
-        return None, None
+        return None
     except IndexError as e:
-        logger.error ( "Could not find any data files for this measurement. Skipping." )
-        return None, None
+        logger.error ( "Could not find any data files for this measurement." )
+        return None
         
-    datalog.update_measurement ( measurement.Id(), ("system_id", system_id) )
+    datalog.update_task ( measurement.Id(), (Datalog.Field.SYSTEM_ID, system_id) )
     
     try:
-        netcdf_parameters_path = system_netcdf_parameters[system_id]
-    except KeyError as e:
+        netcdf_parameters_path = system_netcdf_parameters.get_parameter_file ( system_id = system_id, measurement_type = measurement.Type() )
+    except:
+        traceback.print_exc()
         # No netcdf parameters file found for this system!
         logger.error ( f"Could not find netcdf parameters file for system ID {system_id}" )
-        return None, None
+        return None
         
     try:
         sys.path.append ( os.path.dirname (netcdf_parameters_path) )
@@ -47,17 +67,17 @@ def LicelToSCC ( measurement, out_folder, system_netcdf_parameters ):
         measurement_number = measurement.NumberAsString()
         measurement_id = "{0}{1}{2}".format(date_str, earlinet_station_id, measurement_number)
     except Exception as e:
-        logger.error ( "Could not determine measurement ID. Skipping..." )
-        return None, None
+        logger.error ( "Could not determine measurement ID." )
+        return None
         
-    datalog.update_measurement ( measurement.Id(), ("scc_measurement_id", measurement_id) )
+    datalog.update_task ( measurement.Id(), (Datalog.Field.SCC_MEASUREMENT_ID, measurement_id) )
 
     try:
         try:
             custom_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DataFiles()], use_id_as_name=False )
             
             if len(measurement.DarkFiles()) > 0:
-                measurement.dark_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DarkFiles()], use_id_as_name=False )
+                custom_measurement.dark_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DarkFiles()], use_id_as_name=False )
                 
             custom_measurement = custom_measurement.subset_by_scc_channels ()
         except (IOError, ValueError):
@@ -70,7 +90,7 @@ def LicelToSCC ( measurement, out_folder, system_netcdf_parameters ):
             custom_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DataFiles()], use_id_as_name=True )
             
             if len(measurement.DarkFiles()) > 0:
-                measurement.dark_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DarkFiles()], use_id_as_name=True )
+                custom_measurement.dark_measurement = CustomLidarMeasurement ( file_list = [file.Path() for file in measurement.DarkFiles()], use_id_as_name=True )
                 
             custom_measurement = custom_measurement.subset_by_scc_channels ()
             
@@ -84,30 +104,44 @@ def LicelToSCC ( measurement, out_folder, system_netcdf_parameters ):
         custom_measurement.save_as_SCC_netcdf (filename=file_path)
     except Exception as e:
         logger.error ( f"Could not convert measurement. {traceback.format_exc()}" )
-        return None, None
+        return None
     
-    return file_path, measurement_id
+    return Path ( file_path )
     
-def LicelToSCCV2 ( measurement, out_folder, system_netcdf_parameters ):
+def LicelToSCCV2 ( measurement : MeasurementSet, out_folder : Path, system_netcdf_parameters : ExtraNCParameters ) -> Union[Path, None]:
+    """
+    Convert a measurement set consisting of older specification Licel raw files
+    to SCC NetCDF input file format.
+    
+    Args:
+        measurement (:obj:`MeasurementSet`): Measurement set to be converted.
+        out_folder (:obj:`Path`): Path to the folder where to store the resulting NetCDF file.
+        system_netcdf_parameters (:obj:`ExtraNCParameters`): Repository of extra NetCDF parameters
+            used by `atmospheric-lidar` to perform the conversion.
+            
+    Returns:
+        :obj:`Path` of the final SCC NetCDF input file. If the conversion cannot be done, it will return None.
+    """
     logger.info ( "Converting %d Licel V2 files to SCC NetCDF format." % len(measurement.DataFiles()) )
     
     try:
         system_id = system_index.GetSystemId (measurement.DataFiles()[0])
     except ValueError as e:
-        logger.error ("Couldn't determine system ID for measurement '%s': %s. Skipping measurement." % (measurement.DataFiles()[0].Path(), str(e)))
-        return None, None
+        logger.error ("Couldn't determine system ID for measurement '%s': %s." % (measurement.DataFiles()[0].Path(), str(e)))
+        return None
     except IndexError as e:
-        logger.error ( "Could not find any data files for this measurement. Skipping." )
-        return None, None
+        logger.error ( "Could not find any data files for this measurement." )
+        return None
         
-    datalog.update_measurement ( measurement.Id(), ("system_id", system_id) )
+    datalog.update_task ( measurement.Id(), (Datalog.Field.SYSTEM_ID, system_id) )
     
     try:
-        netcdf_parameters_path = system_netcdf_parameters[system_id]
-    except KeyError:
+        netcdf_parameters_path = system_netcdf_parameters.get_parameter_file ( system_id = system_id, measurement_type = measurement.Type() )
+    except:
+        traceback.print_exc()
         # No netcdf parameters file found for this system!
         logger.error ( f"Could not find netcdf parameters file for system ID {system_id}" )
-        return None, None
+        return None
         
     try:
         sys.path.append ( os.path.dirname (netcdf_parameters_path) )
@@ -125,16 +159,16 @@ def LicelToSCCV2 ( measurement, out_folder, system_netcdf_parameters ):
         measurement_number = measurement.NumberAsString()
         measurement_id = "{0}{1}{2}".format(date_str, earlinet_station_id, measurement_number)
     except Exception as e:
-        logger.error ( "Could not determine measurement ID. Skipping..." )
-        return None, None
+        logger.error ( "Could not determine measurement ID." )
+        return None
         
-    datalog.update_measurement ( measurement.Id(), ("scc_measurement_id", measurement_id) )
+    datalog.update_task ( measurement.Id(), (Datalog.Field.SCC_MEASUREMENT_ID, measurement_id) )
 
     try:
         custom_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DataFiles()] )
         
         if len(measurement.DarkFiles()) > 0:
-            measurement.dark_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DarkFiles()] )
+            custom_measurement.dark_measurement = CustomLidarMeasurement ( [file.Path() for file in measurement.DarkFiles()] )
 
         custom_measurement = custom_measurement.subset_by_scc_channels ()
         
@@ -145,6 +179,6 @@ def LicelToSCCV2 ( measurement, out_folder, system_netcdf_parameters ):
         custom_measurement.save_as_SCC_netcdf (filename=file_path)
     except Exception as e:
         logger.error ( f"Could not convert measurement. {traceback.format_exc()}" )
-        return None, None
+        return None
     
-    return file_path, measurement_id
+    return Path ( file_path )

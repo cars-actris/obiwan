@@ -49,9 +49,10 @@ setup(name='obiwan',
       keywords='lidar licel',
       install_requires=[
         "atmospheric_lidar",
-        "scc_access==0.11.0"
+        "scc_access==0.11.0" #,
+#        "pollyxt-pipelines>=1.12.0"
       ],
       entry_points={
-          'console_scripts': ['obiwan = obiwan.obiwan:main',],
+          'console_scripts': ['obiwan = obiwan.app:main',],
       },
       )

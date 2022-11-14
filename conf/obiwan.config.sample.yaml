@@ -2,21 +2,49 @@
 scc_configurations_folder: data/Samples
 
 # Path to the Licel lidar system extra parameters, needed for creating the NetCDF files required by Single Calculus Chain.
-# You need to supply one parameter file for each SCC System ID you are using.
+# You can either supply a file for every system ID, or you can supply multiple files for each system ID for different
+# file format versions and/or time intervals (useful if the system configuration has changed).
+# Supported file format versions are 1 for the older specification Licel raw data files, and 2 for the newer specification.
+# Version 0 means that file can be used for any Licel raw data file format.
 # Please check the atmospheric-lidar package documentation for more information on the required contents of these files.
-system_netcdf_parameters:
+licel_netcdf_parameters:
     310: conf/system/rali_netcdf_parameters 2020.py
     312: conf/system/rali_netcdf_parameters 2020.py
-    375: conf/system/ipral_netcdf_parameters_375-376-377-378_auto.py
-    376: conf/system/ipral_netcdf_parameters_375-376-377-378_auto_v2.py
+    375:
+        - file: conf/system/ipral_netcdf_parameters_375-376-377-378_auto.py
+          version: 1
+        - file: conf/system/ipral_netcdf_parameters_375-376-377-378_auto_v2.py
+          version: 2
+    591:
+        - file: conf/system/alpha_netcdf_parameters.py
+          version: 1
+        - file: conf/system/alpha_netcdf_parameters_v2.py
+          version: 2
+          until: 2022-01-01
+        - file: conf/system/alpha_netcdf_parameters_v2_2022.py
+          version: 2
+          from: 2022-01-01
+    610:
+        - file: conf/system/alpha_netcdf_parameters.py
+          version: 1
+        - file: conf/system/alpha_netcdf_parameters_v2.py
+          version: 2
+          until: 2022-01-01
+        - file: conf/system/alpha_netcdf_parameters_v2_2022.py
+          version: 2
+          from: 2022-01-01
 
-# This parameter will be used to identify real measurements. The algorithm will look for this string in the location field
-# in the raw Licel files. In this sample, the instrument will use "Buchares" location:
-measurement_location: Buchares
+# This parameter will be used to identify real measurements. The algorithm will look for these strings in the location field
+# in the raw Licel files. In this sample, only "Buchares" and "SIRTA" measurements will be processed.
+measurement_identifiers:
+    - SIRTA
+    - Buchares
 
 # This parameter will be used to identify dark files. The algorithm will look for this string in the location field
 # in the raw Licel files. In this sample, dark measurements will use "Dark" location:
-dark_location: Dark
+dark_identifiers:
+    - Dark
+    - D
 
 # This folder will hold the converted NetCDF files, which can be uploaded to the Single Calculus Chain:
 netcdf_out_folder: data/netcdf
@@ -49,11 +77,17 @@ minimum_measurement_length: 1800
 
 maximum_measurement_length: 3600
 
-# Determines how the algorithm will split the measurements when building the NetCDF files. Three values are accepted:
-# * -1 will split them based only on measurement length (see above)
-# * 0 will try to center the measurements at fixed (xx:00) hours. First and last measurements from a set are being excepted from this rule (depending on when the measurement started/stopped).
-# * 1 will try to center the measurements at half hours (xx:30). First and last measurements from a set are being excepted from this rule (depending on when the measurement started/stopped).
-measurement_center_type: -1
+# Determines how the algorithm will split the measurements when building the NetCDF files. One of the following values is accepted:
+# [ -1, 0, 1, 2, 3 ]
+# 
+# -1 -- will split them based only on measurement length. When the maximum length is reached, the set will be split.
+# 0  -- will center the measurement sets at sharp (xx:00) hours. The rule will not be enforced to the first and last measurements in a set.
+#       Any remaining data will be glued at the beginning or end of the set.
+# 1  -- behaves like 0 but will not glue any data before or after the aligned segments.
+# 2  -- will center the measurement sets at half (xx:30) hours. The rule will not be enforced to the first and last measurements in a set.
+#       Any remaining data will be glued at the beginning or end of the set.
+# 3  -- behaves like 2 but will not glue any data before or after the aligned segments.
+measurement_alignment_type: 0
 
 # You can define test files lists using the test_TESTTNAME convention. Each item in the list
 # corresponds to the location parameter written in the raw file header when the test is run.

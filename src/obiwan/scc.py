@@ -91,14 +91,28 @@ class OwScc:
         -------------
         String representing the SCC version and SCC processor versions description.
         '''
-        preprocessed_folder = os.path.join ( download_folder, measurement_id, 'elpp' )
-        file = os.path.join ( preprocessed_folder, os.listdir(preprocessed_folder)[0] )
+        # Try to read SCC version information from HiRelPP. If that fails, fallback to ELPP.
+        elpp_folder = os.path.join ( download_folder, measurement_id, 'elpp' )
+        hirelpp_folder = os.path.join ( download_folder, measurement_id, 'hirelpp' )
         
-        dataset = Dataset ( file )
+        folders_to_scan = [ hirelpp_folder, elpp_folder ]
         
-        scc_version = dataset.scc_version_description
+        scc_version = None
         
-        dataset.close()
+        for folder in folders_to_scan:
+            try:
+                file = os.path.join ( folder, os.listdir ( folder )[0] )
+                
+                with Dataset( file ) as dataset:
+                    scc_version = dataset.scc_version_description
+                    
+                break
+            except:
+                # HiRelPP products might not exist. We can try checking ELPP files next.
+                continue
+        
+        if scc_version is None:
+            raise IOError ( "Could not find any preprocessor files." )
         
         return scc_version
         
@@ -140,7 +154,7 @@ class OwScc:
         # If the upload failed, retry for a given number of times.
         while upload == False and retry_count < max_retry_count:
             retry_count += 1
-            logger.warning ( "[%s] Upload to SCC failed with code. Retrying (%d/%d)." % (measurement_id, retry_count, max_retry_count), extra={'scope': measurement_id} )
+            logger.warning ( "Upload to SCC failed. Retrying (%d/%d)." % (retry_count, max_retry_count), extra={'scope': measurement_id} )
             
             upload = self.TryUpload (filename, system_id, replace)
             
@@ -183,5 +197,3 @@ class OwScc:
                 logger.info ( scc_version, extra={'scope': measurement_id} )
             else:
                 logger.error ( "Download failed", extra={'scope': measurement_id} )
-                
-scc = OwScc()
