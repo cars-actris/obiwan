@@ -176,8 +176,11 @@ class LicelV2Reader(LidarReader):
                 
             custom_measurement = custom_measurement.subset_by_scc_channels ()
             
-            if len(custom_measurement.channels) != len(data_files[0].info.channels):
-                logger.warning (f"Could not find all measurement channels in extra NetCDF parameters file", extra={'scope': measurement_id})
+            try:
+                if len(custom_measurement.channels) != len(data_files[0].info.channels):
+                    logger.warning (f"Could not find all measurement channels in extra NetCDF parameters file", extra={'scope': measurement_id})
+            except Exception:
+                pass
 
             custom_measurement.set_measurement_id(measurement_number=measurement_set.NumberAsString())
             

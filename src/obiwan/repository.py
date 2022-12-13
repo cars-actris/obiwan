@@ -246,9 +246,17 @@ class MeasurementFile:
             same_n_shots = False
             
             for other_channel in measurement.info.channels:
+                number_of_shots = channel.number_of_shots
+                if type(number_of_shots) is tuple:
+                    number_of_shots = number_of_shots[0]
+                    
+                other_number_of_shots = other_channel.number_of_shots
+                if type(other_number_of_shots) is tuple:
+                    other_number_of_shots = other_number_of_shots[0]
+                    
                 if channel.Equals (other_channel):
                     try:
-                        relative_diff = abs((channel.number_of_shots - other_channel.number_of_shots) / other_channel.number_of_shots) * 100.0
+                        relative_diff = abs((number_of_shots - other_number_of_shots) / other_number_of_shots) * 100.0
                     except ZeroDivisionError:
                         relative_diff = float('inf')
                         

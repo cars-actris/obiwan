@@ -58,8 +58,9 @@ def Convert ( config : Config, measurement : MeasurementSet ) -> Union[Path, Non
             output_folder = config.netcdf_out_dir,
             app_config = obiwan.config
         )
-    except Exception:
+    except Exception as e:
         obiwan.logger.error (f"Unknown measurement type.")
+        traceback.print_exc()
         return None
         
     if file_path is None:
