@@ -952,7 +952,7 @@ class Lidarchive:
                     test_files = potential_tests.get( test.name, [] )
                     potential_tests[ test.name ] = []
                     
-                    if test.MeasurementsCompleteTest ( test_files, strict ):
+                    if test.CheckTest ( test_files, strict ):
                         subfolder_name = test_files[0].StartDateTime().strftime(date_format)
                         test_subfolder = os.path.join ( out_folder, test_name, subfolder_name )
                         
@@ -967,7 +967,7 @@ class Lidarchive:
             test_files = potential_tests.get( test.name, [] )
             potential_tests[ test.name ] = []
             
-            if test.MeasurementsCompleteTest ( test_files, strict ):
+            if test.CheckTest ( test_files, strict ):
                 subfolder_name = test_files[0].StartDateTime().strftime(date_format)
                 test_subfolder = os.path.join ( out_folder, test_name, subfolder_name )
                 
