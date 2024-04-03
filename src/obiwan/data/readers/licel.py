@@ -138,7 +138,7 @@ class LicelReader(LidarReader):
             traceback.print_exc()
             return None, None
             
-        logger.info ( "Converting %d Licel files to SCC NetCDF format." % len(measurement_set.DataFiles()), extra={'scope': measurement_id} )
+        logger.info ( "Converting %d Licel files to SCC NetCDF format (%d dark files)." % (len(measurement_set.DataFiles()), len(measurement_set.DarkFiles())), extra={'scope': measurement_id} )
             
         # In the case that the system was shut down whilst writing the last data file,
         # the latter will have a smaller number of laser shots. If this happens, the

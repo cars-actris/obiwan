@@ -1,8 +1,7 @@
 from obiwan.log import logger, datalog, Datalog
 from obiwan.lidar import system_index
 from obiwan.config import ExtraNCParameters
-
-from obiwan.lidarchive.lidarchive import MeasurementSet
+from obiwan.repository import MeasurementSet
 
 import importlib
 import os

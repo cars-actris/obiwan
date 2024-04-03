@@ -98,7 +98,7 @@ class LicelV2Reader(LidarReader):
         Returns:
             True if the file and identifier match, False otherwise.
         """
-        return info.location in dark_identifiers or info.extra.get("custom_field", "") in identifiers
+        return info.location in identifiers or info.extra.get("custom_field", "") in identifiers
         
     @staticmethod
     def convert_to_scc ( measurement_set : MeasurementSet, system_id : int, output_folder : Path, app_config : Config ) -> Tuple[Path, str]:
@@ -144,7 +144,7 @@ class LicelV2Reader(LidarReader):
             logger.error ( "Could not determine measurement ID." )
             return None, None
             
-        logger.info ( "Converting %d Licel V2 files to SCC NetCDF format." % len(measurement_set.DataFiles()), extra={'scope': measurement_id} )
+        logger.info ( "Converting %d Licel V2 files to SCC NetCDF format (%d dark files)." % (len(measurement_set.DataFiles()), len(measurement_set.DarkFiles())), extra={'scope': measurement_id} )
             
         # In the case that the system was shut down whilst writing the last data file,
         # the latter will have a smaller number of laser shots. If this happens, the

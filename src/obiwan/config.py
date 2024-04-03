@@ -341,6 +341,9 @@ class Config:
         self.max_acceptable_gap = config['maximum_measurement_gap']
         self.min_acceptable_length = config['minimum_measurement_length']
         self.max_acceptable_length = config['maximum_measurement_length']
+        
+        self.min_acceptable_dark_length = config.get('minimum_dark_measurement_length', 60)
+        
         try:
             self.alignment_type = AlignmentType ( config['measurement_alignment_type'] )
         except ValueError:

@@ -37,10 +37,10 @@ def Convert ( config : Config, measurement : MeasurementSet ) -> Union[Path, Non
     try:
         system_id = obiwan.system_index.GetSystemId (measurement.DataFiles()[0])
     except ValueError as e:
-        logger.error ("Couldn't determine system ID for measurement '%s': %s." % (measurement.DataFiles()[0].Path(), str(e)))
+        obiwan.logger.error ("Couldn't determine system ID for measurement '%s': %s." % (measurement.DataFiles()[0].Path(), str(e)), extra={'scope': measurement.Id()})
         return None
     except IndexError as e:
-        logger.error ( "Could not find any data files for this measurement." )
+        obiwan.logger.error ( "Could not find any data files for this measurement.", extra={'scope': measurement.Id()} )
         return None
         
     obiwan.datalog.update_task ( measurement.Id(), (Datalog.Field.SYSTEM_ID, system_id) )
@@ -59,7 +59,7 @@ def Convert ( config : Config, measurement : MeasurementSet ) -> Union[Path, Non
             app_config = obiwan.config
         )
     except Exception as e:
-        obiwan.logger.error (f"Unknown measurement type.")
+        obiwan.logger.error (f"Unknown measurement type.", extra={'scope': measurement.Id()})
         traceback.print_exc()
         return None
         
@@ -371,10 +371,11 @@ def main ():
     obiwan.datalog.update_config((Datalog.Field.CONFIGURATION_FILE, obiwan.config), save=True)
         
     scanned_measurements = lidarchive.ContinuousMeasurements (
-        obiwan.config.max_acceptable_gap,
-        obiwan.config.min_acceptable_length,
-        obiwan.config.max_acceptable_length,
-        obiwan.config.alignment_type
+        max_gap = obiwan.config.max_acceptable_gap,
+        min_length = obiwan.config.min_acceptable_length,
+        max_length = obiwan.config.max_acceptable_length,
+        min_dark_length = obiwan.config.min_acceptable_dark_length,
+        alignment_type = obiwan.config.alignment_type
     )
     obiwan.logger.info ( "Identified %d different continuous measurements" % (len (scanned_measurements)) )
 
@@ -389,38 +390,41 @@ def main ():
     
     # Main loop:
     for index, task in enumerate(obiwan.datalog.tasks.values()):
-        # try:
-        obiwan.logger.info ( f"Started task {index+1}/{len(obiwan.datalog.tasks)}" )
-        
-        needs_convert = not task[Datalog.Field.CONVERTED]
-        needs_upload = task[Datalog.Field.WANT_UPLOAD] and not task[Datalog.Field.UPLOADED]
-        needs_download = task[Datalog.Field.WANT_DOWNLOAD] and not task[Datalog.Field.DOWNLOADED]
-        needs_debug = task[Datalog.Field.WANT_DEBUG]
-        
-        if needs_convert:
-            Convert ( obiwan.config, task[Datalog.Field.MEASUREMENT] )
+        try:
+            obiwan.logger.info ( f"Started task {index+1}/{len(obiwan.datalog.tasks)}" )
             
-        file_path = task[Datalog.Field.SCC_NETCDF_PATH]
-        measurement_id = task[Datalog.Field.SCC_MEASUREMENT_ID]
+            needs_convert = not task[Datalog.Field.CONVERTED]
+            needs_upload = task[Datalog.Field.WANT_UPLOAD] and not task[Datalog.Field.UPLOADED]
+            needs_download = task[Datalog.Field.WANT_DOWNLOAD] and not task[Datalog.Field.DOWNLOADED]
+            needs_debug = task[Datalog.Field.WANT_DEBUG]
             
-        if not measurement_id or not file_path:
-            obiwan.logger.error ("Measurement could not be converted.")
-            continue
-            
-        obiwan.logger.info ( f"Successfully converted measurement to SCC NetCDF format: {os.path.basename(file_path)}" )
-        
-        if needs_debug:
-            if obiwan.config.measurements_debug_dir:
-                DebugMeasurement(task[Datalog.Field.MEASUREMENT], obiwan.config.measurements_debug_dir)
+            if needs_convert:
+                Convert ( obiwan.config, task[Datalog.Field.MEASUREMENT] )
                 
-        if needs_upload:
-            Upload (
-                config = obiwan.config,
-                measurement = task[Datalog.Field.MEASUREMENT],
-                reprocess = task[Datalog.Field.REPROCESS_ENABLED],
-                replace = task[Datalog.Field.REPLACE_ENABLED]
-            )
+            file_path = task[Datalog.Field.SCC_NETCDF_PATH]
+            measurement_id = task[Datalog.Field.SCC_MEASUREMENT_ID]
+                
+            if not measurement_id or not file_path:
+                obiwan.logger.error ("Measurement could not be converted.")
+                continue
+                
+            obiwan.logger.info ( f"Successfully converted measurement to SCC NetCDF format: {os.path.basename(file_path)}" )
             
+            if needs_debug:
+                if obiwan.config.measurements_debug_dir:
+                    DebugMeasurement(task[Datalog.Field.MEASUREMENT], obiwan.config.measurements_debug_dir)
+                    
+            if needs_upload:
+                Upload (
+                    config = obiwan.config,
+                    measurement = task[Datalog.Field.MEASUREMENT],
+                    reprocess = task[Datalog.Field.REPROCESS_ENABLED],
+                    replace = task[Datalog.Field.REPLACE_ENABLED]
+                )
+                
+        except Exception as e:
+            obiwan_logger.error (f"Error processing task: {str(e)}", extra={'scope': task[Datalog.Field.SCC_MEASUREMENT_ID]})
+                
     if obiwan.args.download:
         obiwan.logger.info ( "Downloading SCC products" )
         DownloadMeasurements ()

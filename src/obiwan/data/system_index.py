@@ -126,6 +126,6 @@ class SystemIndex:
             raise ValueError ( "Couldn't find a matching configuration." )
         
         if len(compatible_ids) > 1:
-            raise ValueError ( "More than one configuration matches." )
+            raise ValueError ( "More than one configuration matches: %s" % compatible_ids )
             
         return int(compatible_ids[0])

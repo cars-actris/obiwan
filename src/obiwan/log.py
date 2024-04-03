@@ -390,28 +390,34 @@ class LoggerFactory:
         """
         Construct a :obj:`logging.Logger` object and do basic settings on it.
         """
-        log_format = '%(asctime)s %(levelname)-8s %(scope)-12s %(message)s'
+        obiwan_log_format = '%(asctime)s %(levelname)-8s %(scope)-12s %(message)s'
+        log_format = '%(asctime)s %(levelname)-8s %(message)s'
         LOG_FILE = "obiwan.log"
         
         logging.basicConfig (
             level = logging.INFO,
-            format = log_format,
+            format = obiwan_log_format,
             datefmt = '%Y-%m-%d %H:%M',
             filename = LOG_FILE,
             filemode = 'w'
         )
 
-        logger = logging.getLogger( 'obiwan' )
-
-        logger.addFilter ( LoggerFactory.SystemLogFilter() )
-
-        formatter = logging.Formatter ( log_format, '%Y-%m-%d %H:%M' )
-
         logging.getLogger ( 'scc_access.scc_access' ).setLevel ( logging.ERROR )
         logging.getLogger ( 'scc_access.scc_access' ).addFilter ( LoggerFactory.SCCLogFilter() )
+        
+        logging.getLogger ( 'scc_access' ).setLevel ( logging.ERROR )
+        logging.getLogger ( 'scc_access' ).addFilter ( LoggerFactory.SCCLogFilter() )
 
         logging.getLogger ( 'atmospheric_lidar.generic' ).setLevel ( logging.ERROR )
         logging.getLogger ( 'atmospheric_lidar.generic' ).addFilter ( LoggerFactory.LidarLogFilter() )
+        
+        logging.getLogger ( 'atmospheric_lidar' ).setLevel ( logging.ERROR )
+        logging.getLogger ( 'atmospheric_lidar' ).addFilter ( LoggerFactory.LidarLogFilter() )
+        
+        formatter = logging.Formatter ( log_format, '%Y-%m-%d %H:%M' )
+        logger = logging.getLogger( 'obiwan' )
+
+        logger.addFilter ( LoggerFactory.SystemLogFilter() )
 
         console = logging.StreamHandler()
         console.setLevel ( logging.INFO )

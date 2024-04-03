@@ -983,6 +983,7 @@ class Lidarchive:
         max_gap : int = 300,
         min_length : int = 1800,
         max_length : int = 3600,
+        min_dark_length : int = 60,
         alignment_type : AlignmentType = 0
     ) -> List[MeasurementSet]:
         """
@@ -993,25 +994,26 @@ class Lidarchive:
             min_length (int): Minimum acceptable length for a measurement in seconds.
             max_length (int): Maximum acceptable length for a measurement in seconds. Measurements longer
                 than this value will be split.
+            min_dark_length (int): Minimum acceptable length for a dark measurement in seconds.
             alignment_type (:obj:`AlignmentType`): The type of alignment to be performed on the measurement sets.
 
         Returns:
             :obj:`list` of :obj:`MeasurementSet`
         """
         if len(self.continuous_measurements) == 0:
-            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, alignment_type)
+            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, min_dark_length, alignment_type)
 
         if self.accepted_gap != max_gap:
-            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, alignment_type)
+            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, min_dark_length, alignment_type)
 
         if self.accepted_min_length != min_length:
-            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, alignment_type)
+            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, min_dark_length, alignment_type)
 
         if self.accepted_max_length != max_length:
-            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, alignment_type)
+            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, min_dark_length, alignment_type)
 
         if self.accepted_alignment_type != alignment_type:
-            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, alignment_type)
+            self.ComputeContinuousMeasurements(max_gap, min_length, max_length, min_dark_length, alignment_type)
 
         return self.continuous_measurements
         
@@ -1021,13 +1023,17 @@ class Lidarchive:
         
         Args:
             max_gap (int): Maximum acceptable time gap between two measurement files in seconds.
+            min_length (int): Minimum acceptable length for a measurement in seconds.
+            max_length (int): Maximum acceptable length for a measurement in seconds. Measurements longer
+                than this value will be split.
+            alignment_type (:obj:`AlignmentType`): The type of alignment to be performed on the measurement sets.
         
         Returns:
             :obj:`list` of :obj:`list` of :obj:`MeasurementFile`
         """
         dark_measurements = [ m for m in self.measurements if m.IsDark ( self.dark_identifiers ) ]
         
-        dark_segments = self.SplitMeasurements ( dark_measurements, max_gap, min_length, max_length, alignment_type, same_location = True, same_type = True, same_system = True )
+        dark_segments = self.SplitMeasurements ( dark_measurements, max_gap, min_length = min_length, max_length = max_length, alignment_type = alignment_type, same_location = True, same_type = True, same_system = True )
         
         return dark_segments
         
@@ -1114,6 +1120,7 @@ class Lidarchive:
         max_gap : int,
         min_length : int,
         max_length : int,
+        min_dark_length : int,
         alignment_type : AlignmentType
     ):
         """
@@ -1124,6 +1131,7 @@ class Lidarchive:
             min_length (int): Minimum acceptable length for a measurement in seconds.
             max_length (int): Maximum acceptable length for a measurement in seconds. Measurements longer
                 than this value will be split.
+            min_dark_length (int): Minimum acceptable length for a dark measurement in seconds.
             alignment_type (:obj:`AlignmentType`): The type of alignment to be performed on the measurement sets.
         """
         self.continuous_measurements = []
@@ -1135,7 +1143,7 @@ class Lidarchive:
             self.accepted_alignment_type = alignment_type
             return
             
-        gapped_dark_segments = self.ContinuousDarkMeasurements ( max_gap, min_length, max_length, alignment_type )
+        gapped_dark_segments = self.ContinuousDarkMeasurements ( max_gap, min_dark_length, max_length, alignment_type )
         gapped_data_segments = self.ContinuousDataMeasurements ( max_gap, min_length, max_length, alignment_type )
 
         measurement_number = 0

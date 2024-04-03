@@ -74,8 +74,10 @@ minimum_measurement_length: 1800
 
 # Maximum time length (in seconds) for a measurement. Continuous measurements will be split at this length. This option is useful for
 # setting the maximum length of a measurement to be uploaded to the Single Calculus Chain (usually 1 hour, or 3600 seconds).
-
 maximum_measurement_length: 3600
+
+# Minimum time length (in seconds) for a dark measurement to be considered valid. Defaults to 60 seconds.
+minimum_dark_measurement_length: 60
 
 # Determines how the algorithm will split the measurements when building the NetCDF files. One of the following values is accepted:
 # [ -1, 0, 1, 2, 3 ]
